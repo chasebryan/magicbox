@@ -129,7 +129,8 @@ def _xor_key(left: bytes, right: bytes) -> bytes:
     return bytes(a ^ b for a, b in zip(left, right, strict=True))
 
 
-def _create_lock(length: int, work: int) -> tuple[_Lock, bytes]:
+def _create_puzzle(work: int) -> tuple[int, int, int]:
+    """Fresh public puzzle parameters and the encryptor's temporary result."""
     private = rsa.generate_private_key(public_exponent=65537, key_size=MODULUS_BITS)
     numbers = private.private_numbers()
     modulus = numbers.public_numbers.n
@@ -140,6 +141,11 @@ def _create_lock(length: int, work: int) -> tuple[_Lock, bytes]:
             break
     # The encryptor has the temporary factors and can take this shortcut.
     solution = pow(base, pow(2, work, phi), modulus)
+    return modulus, base, solution
+
+
+def _create_lock(length: int, work: int) -> tuple[_Lock, bytes]:
+    modulus, base, solution = _create_puzzle(work)
     key, nonce = secrets.token_bytes(KEY_BYTES), secrets.token_bytes(12)
     prefix = _PREFIX.pack(
         MAGIC, VERSION, SUITE, work, length,
