@@ -1,6 +1,8 @@
-# Magic Box format v1
+# Magic Box format v1, computational suite 01
 
-Version 1 defines a single suite. Every multi-byte integer is unsigned and
+This document defines version 1, suite `01`. The separate
+[guarded suite `02`](GUARDED.md) requires a trusted vault and has a different
+layout and opening rule. Every multi-byte integer here is unsigned and
 big-endian. Every field has a fixed width except the encrypted file contents.
 There is no padding, compression, filename, extension field, or executable
 code. Unknown versions and suites are rejected.

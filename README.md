@@ -1,18 +1,23 @@
 # Magic Box
 
-**AES-256 file encryption. The computational lock lives inside the box.**
+**AES-256 encryption. One portable `.mbox` file. An explicit opening rule.**
 
-Magic Box encrypts a file with a fresh 256-bit AES key, locks that key behind
-a repeated-squaring puzzle, and puts the puzzle, wrapped key, nonce, and
-authenticated encrypted contents into one `.mbox` file. Opening needs the
-box and its public decoder. There is no password prompt or separate key file.
+Magic Box has two experimental suites. Both put a wrapped AES key, a nonce,
+and authenticated encrypted contents inside the box. Neither embeds executable
+code or a plaintext decryption key.
 
-This is an experimental cryptographic container. AES-256-GCM supplies the
-encryption; the embedded lock controls the intended computation needed to
-recover its key. Anyone holding the box can solve that public lock and open
-it. The work parameter is a computation count, not a guaranteed duration.
+| Suite | Opening rule | Integrity failure |
+| --- | --- | --- |
+| Guarded (`02`) | A trusted vault must hold the essential guard secret | Revoke that secret, retain an alarm event, refuse later opens |
+| Computational (`01`) | Anyone can solve the public repeated-squaring puzzle | Refuse this submission; other copies remain openable |
 
-## Use
+The guarded suite implements the stronger opening rule. Its portable file
+contains the lock record; enforcement lives in a trusted security process.
+An ordinary file cannot observe offline attacks or destroy untouched copies.
+The included `MemoryVault` is a working protocol reference, with no durable
+storage, host isolation, rollback protection, or secure memory erasure.
+
+## Install
 
 Python 3.11 or later:
 
@@ -20,63 +25,79 @@ Python 3.11 or later:
 python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install .
-
-magicbox seal report.pdf -o report.mbox --work 100000
-magicbox inspect report.mbox
-magicbox open report.mbox -o recovered.pdf --max-work 100000
 ```
 
-`python -m magicbox` accepts the same commands. The number `100000` is an
-example workload for experimentation, not a security recommendation.
-Sealing requires an explicit `--work`. Opening refuses boxes above its
-default budget of 1,000,000 squarings; raise `--max-work` explicitly for a
-larger box. Inspection reads public metadata without solving or authenticating
-the lock.
+## Guarded files
 
-Inputs are preserved. Existing outputs are refused. File contents are streamed;
-the format adds exactly **854 bytes**. A decrypted destination becomes visible
-only after its authentication tag verifies. See the [security model](SECURITY.md)
-for the temporary-file and memory guarantees.
+Inside the trusted process:
 
-## The internal lock
+```python
+from magicbox import MemoryVault, open_guarded_file, seal_guarded_file
 
-For a freshly generated 3072-bit modulus `n = p*q`, the opening computation is:
+def alarm(event):
+    print(event)  # Replace with your security system's event handler.
 
-```text
-x = a
-repeat t times:
-    x = x*x mod n
+vault = MemoryVault(on_alarm=alarm)  # Reference model only.
+box_id = seal_guarded_file("report.pdf", "report.mbox", vault=vault)
+# Keep box_id in the trusted registry. Authorize callers before opening.
+open_guarded_file("report.mbox", "recovered.pdf", box_id=box_id, vault=vault)
 ```
 
-HKDF-SHA256 turns the final value into a 32-byte mask. The mask unwraps the
-random AES key. AES-256-GCM then opens the contents and authenticates the
-entire header, including the lock parameters and wrapped key.
+The same live vault must remain available. Guarded files have no public puzzle,
+password, or ordinary CLI opening path. A registered byte mismatch or GCM
+authentication failure revokes the expected box's secret before the alarm
+callback runs. An untouched copy is then refused by the same vault.
 
-During sealing, the temporary factors let the encryptor compute the final
-value efficiently. The implementation writes neither those factors nor the
-plaintext AES key to the box. It does not promise secure erasure of Python
-process memory.
+Events remain available through `vault.events`. `TamperDetected.event` identifies
+the revoked box; `TamperDetected.alarm_error` reports a failed callback. No
+network integration is configured. A production `GuardVault` must provide
+protected durable state and reliable event delivery. See the exact
+[guarded protocol](docs/GUARDED.md) and [security model](SECURITY.md).
 
-The format contains a fixed mathematical recipe. It contains no executable
-payload, dynamic code, or plaintext decryption key. Its decoder is public.
-An ordinary copyable file cannot detect offline guessing or enforce destruction
-of other copies. Magic Box v1 provides a computational opening condition and
-tamper detection; an irreversible attempt counter would require protected
-state outside the portable box.
+This reference buffers files and limits plaintext to **64 MiB**. The format
+adds exactly **94 bytes**. Inputs are preserved, existing outputs are refused,
+and failed opens publish no plaintext. Local I/O errors do not count as tamper.
 
-## Exact specification and checks
+Run a demonstration using temporary test files:
 
-- [Format v1](docs/FORMAT.md): every field, byte offset, equation, and limit.
-- [Security model](SECURITY.md): what the construction does and assumes.
-- [Fixed test vector](tests/vectors/v1.json): public test values and exact bytes.
+```sh
+python examples/guarded_demo.py
+```
+
+## Computational files
+
+The existing public-puzzle suite remains available for experimentation:
+
+```sh
+magicbox seal report.pdf -o delayed.mbox --work 100000
+magicbox inspect delayed.mbox
+magicbox open delayed.mbox -o recovered.pdf --max-work 100000
+```
+
+These commands operate on suite `01` only. `python -m magicbox` accepts the
+same commands. Sealing requires an explicit `--work`. Opening defaults to a
+budget of 1,000,000 squarings. Inspection reads unauthenticated metadata.
+
+For a fresh 3072-bit modulus `n = p*q`, the decoder starts at `a` and repeats
+`x = x*x mod n` exactly `t` times. HKDF-SHA256 derives a mask that unwraps
+the random AES key. AES-256-GCM authenticates the entire header and contents.
+The encryptor uses temporary factors to compute the puzzle solution efficiently;
+it never serializes those factors. Python memory erasure is not guaranteed.
+
+Anyone holding this suite's box can solve its lock. Work counts computation,
+not seconds; `100000` is an example workload, not a security recommendation.
+Files are streamed and the format adds exactly **854 bytes**. This suite
+provides no revocation or alarm. See its [exact format](docs/FORMAT.md).
+
+## Checks
 
 ```sh
 python -m unittest discover -s tests -v
 ```
 
-Tests cover NIST AES-256-GCM and RFC 5869 HKDF vectors, independent container
-construction, lock arithmetic, empty and binary files, streaming, malformed
-input, authenticated tampering, work limits, interrupted operations, and
-output preservation.
+Tests cover primitive and container vectors, independent construction, binary
+files, output preservation, malformed inputs, guarded revocation of intact
+copies, trusted ID binding, concurrent operations, and alarm failures.
+Both suites require independent cryptographic review.
 
 CC0-1.0. See [LICENSE](LICENSE).

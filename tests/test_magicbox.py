@@ -237,7 +237,7 @@ class MagicBoxTests(unittest.TestCase):
     def test_module_entrypoint(self):
         result = subprocess.run([sys.executable, "-m", "magicbox", "--version"],
                                 capture_output=True, text=True, check=True)
-        self.assertEqual(result.stdout.strip(), "0.1.0")
+        self.assertEqual(result.stdout.strip(), "0.2.0")
 
     def test_sealing_twice_uses_fresh_lock_key_and_nonce(self):
         self.seal()
