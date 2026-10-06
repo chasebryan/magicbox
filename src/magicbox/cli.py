@@ -1,4 +1,4 @@
-"""Three commands: seal, inspect, open."""
+"""Initialize a key capsule; retain the legacy suite's commands."""
 
 from __future__ import annotations
 
@@ -9,7 +9,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 from . import __version__
-from .core import DEFAULT_MAX_WORK, MagicBoxError, inspect_file, open_file, seal_file
+from .capsule import init_file, inspect_file
+from .core import DEFAULT_MAX_WORK, MagicBoxError, open_file, seal_file
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -18,11 +19,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command", required=True)
-    seal = commands.add_parser("seal", help="encrypt a file and embed its lock")
+    initialized = commands.add_parser("init", help="encrypt a file with an internal key capsule")
+    initialized.add_argument("file", type=Path)
+    initialized.add_argument("-o", "--output", type=Path, required=True)
+    initialized.add_argument("--work", type=int, required=True, help="embedded computation count")
+    seal = commands.add_parser("seal", help="create a legacy suite-01 box")
     seal.add_argument("file", type=Path)
     seal.add_argument("-o", "--output", type=Path, required=True)
     seal.add_argument("--work", type=int, required=True, help="number of squarings to open")
-    opened = commands.add_parser("open", help="solve the embedded lock and decrypt")
+    opened = commands.add_parser("open", help="open a legacy suite-01 box")
     opened.add_argument("box", type=Path)
     opened.add_argument("-o", "--output", type=Path, required=True)
     opened.add_argument("--max-work", type=int, default=DEFAULT_MAX_WORK)
@@ -30,7 +35,10 @@ def main(argv: list[str] | None = None) -> int:
     inspected.add_argument("box", type=Path)
     arguments = parser.parse_args(argv)
     try:
-        if arguments.command == "seal":
+        if arguments.command == "init":
+            info = init_file(arguments.file, arguments.output, work=arguments.work)
+            print(f"initialized {arguments.output} (internal key capsule; work={info.work})")
+        elif arguments.command == "seal":
             info = seal_file(arguments.file, arguments.output, work=arguments.work)
             print(f"sealed {arguments.output} ({info.work} squarings to open)")
         elif arguments.command == "open":

@@ -1,9 +1,59 @@
 # Security model
 
-Magic Box v1 is an experimental container for computationally delayed file
-opening. It uses AES-256-GCM for content encryption, a fresh 3072-bit RSA modulus
-for a repeated-squaring puzzle, and HKDF-SHA256 to wrap a random content key.
-It makes no claim to invent AES, HKDF, or time-lock puzzles.
+Magic Box's computational formats are experimental containers. They use
+AES-256-GCM for content encryption, a fresh 3072-bit RSA modulus for a
+repeated-squaring condition, and HKDF-SHA256 for internal keying. This branch
+adds suite `03`; the original format is suite `01`. These are compositions of
+existing primitives, not new AES, HKDF, or time-lock algorithms.
+
+## Internal capsule suite 03
+
+Initialization encrypts a 58-byte keying record containing the content key,
+nonce, length, cipher identifier, and record version. The record is authenticated
+under a distinct AES-256-GCM key derived from the embedded condition's result.
+The capsule binds every public prefix byte. Content authentication binds the
+entire header, including the encrypted record and its authentication tag.
+
+The new construction supplies no plaintext key field, key sidecar, secret
+environment variable, hard-coded recovery key, or external vault. Initialization
+returns metadata only. The temporary factors, result, capsule key, content key,
+and record remain transient process values; Python cannot guarantee erasure
+from memory, library buffers, swap, snapshots, or crash dumps. A process observer
+or retained sealing secret can bypass the condition.
+
+Suite `03` ships initialization and unauthenticated inspection only. The legacy
+opener rejects it. This API choice neither prevents independent decoders nor
+turns concealed implementation details into a cryptographic boundary. Someone
+who satisfies or defeats the condition can recover the record and keep its
+content key or plaintext. No attempt is made to obfuscate source or prove that
+brute force is the only possible route.
+
+Inspection cannot authenticate the encrypted record or payload. Its reported
+plaintext length is inferred from total file size, so added or removed payload
+bytes can change the estimate while leaving inspection structurally successful.
+The encrypted length and both tags must be checked by any future independent
+recovery implementation before publishing plaintext. That implementation also
+needs a strict local computation budget for unauthenticated work parameters.
+
+The capsule independently authenticates keying data; it does not increase the
+puzzle's computational delay or establish 256-bit security for the system.
+Modulus generation, freshness, retained secrets, factoring, hardware speed,
+and cryptanalytic shortcuts still affect protection. File size reveals length.
+No sender identity is established by GCM alone.
+
+Both suites are passive files. Modifying or copying an offline box invokes no
+trusted component, causes no alarm, and cannot destroy an untouched copy.
+Enforced destructive state needs a trusted component resistant to copying,
+rollback, and secret recovery. That guarded experiment is on a separate branch
+and is not represented as an internal property of this self-contained format.
+
+The exact layout is in [docs/CAPSULE.md](docs/CAPSULE.md). Its deterministic
+fixture exposes known test keys and nonces for independent checking; production
+generates fresh values and must never reuse that fixture. Tests of the new
+format do not include a general capsule decoder. Independent cryptographic
+review of the composition and secret lifecycle is still required.
+
+The following sections describe the original suite `01`.
 
 ## Access rule
 
